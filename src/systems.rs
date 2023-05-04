@@ -1,4 +1,4 @@
-use std::ops::{Mul, AddAssign};
+use std::{ops::{Mul, AddAssign}, vec};
 
 use rand::Rng;
 use winit::event::*;
@@ -29,16 +29,16 @@ pub struct GameState {
 
 pub struct Tableau {
     pub cards: Vec<u8>,
+    pub card_quads: Vec<Quad>,
     pub shown_cards: u8,
-    pub x_position: f32
 }
 
 impl Tableau {
     pub fn empty() -> Self {
         Self {
             cards: vec![],
+            card_quads: vec![],
             shown_cards: 0,
-            x_position: 0.0
         }
     }
 
@@ -204,8 +204,15 @@ impl GameState {
     pub fn fill_tableaux(deck: &mut Stack) -> [Tableau; 7] {
         let mut tableau = Tableau::empty_tableaux();
         for i in 0..7 {
+            let mut card_quads = vec![];
+            for j in 0..=i {
+                card_quads.push(Quad {
+                    pos: Vec2 { x: -700.0 + ((CARD_SIZE.x + 20.0) * i as f32), y: -(j as f32 * 70.0) },
+                    size: CARD_SIZE
+                })
+            }
             let stack = Tableau {
-                x_position: -700.0 + ((CARD_SIZE.x + 20.0) * i as f32),
+                card_quads,
                 cards: deck.cards.drain(0..(i + 1)).collect(),
                 shown_cards: 1
             };
@@ -245,15 +252,32 @@ impl GameState {
         if self.talon.quad.contains(self.mouse_pos) {
             if self.stock.cards.len() == 0 {
                 self.stock.cards.splice(.., self.talon.cards.drain(..));
-            } else {
+            } else if self.talon.cards.len() > 0 && self.hand.cards.len() == 0 {
                 self.hand.cards.push(self.talon.cards.remove(0));
             }
         }
-        for stack in self.foundations.iter() {
-            if stack.quad.contains(self.mouse_pos) {
-                println!("{:?}", stack);
+        for tableau in self.tableaux.iter_mut() {
+            for i in 0..tableau.cards.len() {
+                if i >= tableau.cards.len() - tableau.shown_cards as usize { 
+                    if tableau.card_quads[i].contains(self.mouse_pos) {
+                        if self.hand.cards.len() == 0 {
+                            self.hand.cards.splice(.., tableau.cards.drain(i..tableau.cards.len()));
+                            tableau.shown_cards -= (tableau.card_quads.len() - i) as u8;
+                        } else if i == (tableau.cards.len() - 1) {
+                            let amount = self.hand.cards.len();
+                            tableau.cards.splice(tableau.cards.len()..tableau.cards.len(), self.hand.cards.drain(..));
+                            for x in 0..amount {
+                                tableau.card_quads.push( Quad {
+                                    pos: Vec2 { x: tableau.card_quads[i].pos.x, y: -((i + 1 + x) as f32 * 70.0) },
+                                    size: CARD_SIZE } );
+                                tableau.shown_cards += 1;
+                            }
+                        }
+                    }
+                }
             }
         }
+        
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
