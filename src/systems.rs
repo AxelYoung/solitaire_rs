@@ -31,6 +31,7 @@ pub struct Tableau {
     pub cards: Vec<u8>,
     pub card_quads: Vec<Quad>,
     pub shown_cards: u8,
+    pub x_position: f32
 }
 
 impl Tableau {
@@ -39,6 +40,7 @@ impl Tableau {
             cards: vec![],
             card_quads: vec![],
             shown_cards: 0,
+            x_position: 0.0
         }
     }
 
@@ -52,6 +54,18 @@ impl Tableau {
             Tableau::empty(),
             Tableau::empty()
         ]
+    }
+
+    pub fn calculate_card_quads(&mut self) {
+        self.card_quads = vec![];
+        for i in 0..=self.cards.len() {
+            self.card_quads.push( 
+                Quad {
+                    pos: Vec2 { x: self.x_position, y: -(i as f32 * 70.0) },
+                    size: CARD_SIZE
+                }
+            );
+        }
     }
 }
 
@@ -204,18 +218,14 @@ impl GameState {
     pub fn fill_tableaux(deck: &mut Stack) -> [Tableau; 7] {
         let mut tableau = Tableau::empty_tableaux();
         for i in 0..7 {
-            let mut card_quads = vec![];
-            for j in 0..=i {
-                card_quads.push(Quad {
-                    pos: Vec2 { x: -700.0 + ((CARD_SIZE.x + 20.0) * i as f32), y: -(j as f32 * 70.0) },
-                    size: CARD_SIZE
-                })
-            }
-            let stack = Tableau {
-                card_quads,
+            let x_position = -700.0 + ((CARD_SIZE.x + 20.0) * i as f32);
+            let mut stack = Tableau {
+                x_position,
+                card_quads: vec![],
                 cards: deck.cards.drain(0..(i + 1)).collect(),
                 shown_cards: 1
             };
+            stack.calculate_card_quads();
             tableau[i] = stack;
         }
         tableau
@@ -243,41 +253,56 @@ impl GameState {
     }
 
     pub fn mouse_click(&mut self) {
-        println!("{:?}", self.mouse_pos);
-        if self.stock.quad.contains(self.mouse_pos) {
-            if self.stock.cards.len() > 0 {
-                self.talon.cards.insert(0, self.stock.cards.pop().unwrap());
+        if self.hand.cards.len() == 0 {
+            if self.stock.quad.contains(self.mouse_pos) {
+                if self.stock.cards.len() > 0{
+                    // If the stock has cards and hand is empty, transfer 1 card from stock to talon
+                    self.talon.cards.insert(0, self.stock.cards.pop().unwrap());
+                }
             }
-        }
-        if self.talon.quad.contains(self.mouse_pos) {
-            if self.stock.cards.len() == 0 {
-                self.stock.cards.splice(.., self.talon.cards.drain(..));
-            } else if self.talon.cards.len() > 0 && self.hand.cards.len() == 0 {
-                self.hand.cards.push(self.talon.cards.remove(0));
+            if self.talon.quad.contains(self.mouse_pos) {
+                if self.stock.cards.len() == 0 {
+                    // If stock is empty and hand is empty, transfer all cards in talon to stock
+                    self.stock.cards.splice(.., self.talon.cards.drain(..));
+                } else if self.talon.cards.len() > 0 {
+                    // If talon has cards and hand is empty, take card from talon
+                    self.hand.cards.push(self.talon.cards.remove(0));
+                }
             }
-        }
-        for tableau in self.tableaux.iter_mut() {
-            for i in 0..tableau.cards.len() {
-                if i >= tableau.cards.len() - tableau.shown_cards as usize { 
-                    if tableau.card_quads[i].contains(self.mouse_pos) {
-                        if self.hand.cards.len() == 0 {
+            for tableau in self.tableaux.iter_mut() {
+                // Reverse is important, checks collision front to back
+                for i in (0..tableau.cards.len()).rev() {
+                    if i >= tableau.cards.len() - tableau.shown_cards as usize {
+                        // for each shown card in each tableau
+                        if tableau.card_quads[i].contains(self.mouse_pos) {
+                            tableau.shown_cards -= (tableau.cards.len() - i) as u8;
                             self.hand.cards.splice(.., tableau.cards.drain(i..tableau.cards.len()));
-                            tableau.shown_cards -= (tableau.card_quads.len() - i) as u8;
-                        } else if i == (tableau.cards.len() - 1) {
-                            let amount = self.hand.cards.len();
-                            tableau.cards.splice(tableau.cards.len()..tableau.cards.len(), self.hand.cards.drain(..));
-                            for x in 0..amount {
-                                tableau.card_quads.push( Quad {
-                                    pos: Vec2 { x: tableau.card_quads[i].pos.x, y: -((i + 1 + x) as f32 * 70.0) },
-                                    size: CARD_SIZE } );
-                                tableau.shown_cards += 1;
-                            }
+                            tableau.calculate_card_quads();
+                            return;
                         }
                     }
                 }
             }
+        } else {
+            for tableau in self.tableaux.iter_mut() {
+                if tableau.card_quads[tableau.card_quads.len() - 1].contains(self.mouse_pos) {
+                    if tableau.cards.len() == 0 || GameState::card_same_suit(tableau.cards[tableau.cards.len() - 1], self.hand.cards[0]) {
+                        tableau.shown_cards += self.hand.cards.len() as u8;
+                        tableau.cards.append(&mut self.hand.cards);
+                        tableau.calculate_card_quads();
+                        return;
+                    }
+                }
+            }
         }
-        
+    }
+
+    pub fn card_same_suit(x: u8, y: u8) -> bool {
+        let x_suit : u8 = x / 13;
+        let y_suit : u8 = y / 13;
+        println!("{x_suit}");
+        println!("{y_suit}");
+        x_suit == y_suit
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
