@@ -19,22 +19,23 @@ pub struct GameState {
     pub score: u8,
     pub mouse_pos: Vec2,
     pub stock: Stack,
+    pub talon: Stack,
     pub tableau: [Stack; 7],
     pub foundations: [Stack; 4],
     previous_time: instant::Instant,
     tick: f32
 }
 
+#[derive(Debug)]
 pub struct Quad {
     pub pos: Vec2,
     pub size: Vec2
 }
 
-
+#[derive(Debug)]
 pub struct Stack {
     pub cards: Vec<u8>,
-    pub quad: Quad,
-    pub top_hidden: bool
+    pub quad: Quad
 }
 
 impl Stack {
@@ -48,20 +49,16 @@ impl Stack {
             cards.push(random_card);
         }
 
-        println!("{:?}", cards);
-
         Stack {
             cards,
             quad: DECK_QUAD,
-            top_hidden: true
         }
     }
 
     pub fn empty() -> Self {
         Stack {
             cards: vec![],
-            quad: Quad { pos: Vec2::zero(), size: Vec2::zero() },
-            top_hidden: false
+            quad: Quad { pos: Vec2::zero(), size: CARD_SIZE },
         }
     }
 }
@@ -159,8 +156,12 @@ impl GameState {
 
         let tableau = GameState::fill_tableau(&mut stock);
 
+        let mut talon = Stack::empty();
+        talon.quad.pos = Vec2::new(-520, 350);
+
         GameState {
             stock,
+            talon,
             tableau,
             foundations: GameState::create_foundations(),
             previous_time: instant::Instant::now(),
@@ -173,28 +174,22 @@ impl GameState {
     pub fn fill_tableau(deck: &mut Stack) -> [Stack; 7] {
         let mut tableau = [Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty()];
         for i in 0..7 {
-            let mut stack = Stack {
+            let stack = Stack {
                 quad: Quad {
-                    pos: Vec2::new(-700.0 + ((CARD_SIZE.x + 20.0) * i as f32), -200.0),
+                    pos: Vec2::new(-700.0 + ((CARD_SIZE.x + 20.0) * i as f32), 0.0),
                     size: CARD_SIZE
                 },
-                top_hidden: false,
-                cards: vec![]
+                cards: deck.cards.drain(0..(i + 1)).collect()
             };
-
-            for _ in 0..=i {
-                stack.cards.push(deck.cards.pop().unwrap());
-            }
             tableau[i] = stack;
         }
-
         tableau
     }
 
     pub fn create_foundations() -> [Stack; 4] {
         let mut foundations = [Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty()];
         for i in 0..4 {
-            foundations[i].quad.pos =  Vec2::new(-400.0 + ((CARD_SIZE.x + 20.0) * i as f32), 350.0);
+            foundations[i].quad.pos =  Vec2::new(-160.0 + ((CARD_SIZE.x + 20.0) * i as f32), 350.0);
         } 
         foundations
     }
@@ -214,8 +209,23 @@ impl GameState {
     pub fn mouse_click(&mut self) {
         println!("{:?}", self.mouse_pos);
         if self.stock.quad.contains(self.mouse_pos) {
-            if self.stock.top_hidden {
-                self.stock.top_hidden = false;
+            if self.stock.cards.len() > 0 {
+                self.talon.cards.insert(0, self.stock.cards.pop().unwrap());
+            }
+        }
+        if self.talon.quad.contains(self.mouse_pos) {
+            if self.stock.cards.len() == 0 {
+                self.stock.cards.splice(.., self.talon.cards.drain(..));
+            }
+        }
+        for stack in self.tableau.iter() {
+            if stack.quad.contains(self.mouse_pos) {
+                println!("{:?}", stack);
+            }
+        }
+        for stack in self.foundations.iter() {
+            if stack.quad.contains(self.mouse_pos) {
+                println!("{:?}", stack);
             }
         }
     }

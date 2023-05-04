@@ -49,7 +49,8 @@ pub fn create_buffers(device: &wgpu::Device, state: &GameState) -> (Option<wgpu:
     let mut verts : Vec<Vertex> = vec![];
     let mut indis : Vec<u16> = vec![];
 
-    create_quad(&state.stock.quad, stack_index(&state.stock), &mut verts, &mut indis);
+    create_quad(&state.stock.quad, if state.stock.cards.len() == 0 {[1,4]} else {[0,4]}, &mut verts, &mut indis);
+    create_quad(&state.talon.quad, stack_index(&state.talon), &mut verts, &mut indis);
 
     for stack in state.tableau.iter() {
         create_quad(&stack.quad, stack_index(&stack), &mut verts, &mut indis);
@@ -81,15 +82,13 @@ pub fn create_buffers(device: &wgpu::Device, state: &GameState) -> (Option<wgpu:
 fn stack_index(stack: &Stack) -> [u8; 2] {
     if stack.cards.len() == 0 {
         [1, 4]
-    } else if stack.top_hidden {
-        [0, 4]
     } else {
         index_from_card(stack.cards[0])
     }
 }
 
 fn index_from_card(card: u8) -> [u8; 2] {
-    [card % 12, card / 12]
+    [card % 13, card / 13]
 }
 
 fn create_quad(quad: &Quad, sprite_index: [u8; 2], verts: &mut Vec<Vertex>, indis: &mut Vec<u16>) {
