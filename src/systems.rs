@@ -20,10 +20,39 @@ pub struct GameState {
     pub mouse_pos: Vec2,
     pub stock: Stack,
     pub talon: Stack,
-    pub tableau: [Stack; 7],
+    pub tableaux: [Tableau; 7],
     pub foundations: [Stack; 4],
+    pub hand: Stack,
     previous_time: instant::Instant,
     tick: f32
+}
+
+pub struct Tableau {
+    pub cards: Vec<u8>,
+    pub shown_cards: u8,
+    pub x_position: f32
+}
+
+impl Tableau {
+    pub fn empty() -> Self {
+        Self {
+            cards: vec![],
+            shown_cards: 0,
+            x_position: 0.0
+        }
+    }
+
+    pub fn empty_tableaux() -> [Tableau; 7] {
+        [
+            Tableau::empty(),
+            Tableau::empty(),
+            Tableau::empty(),
+            Tableau::empty(),
+            Tableau::empty(),
+            Tableau::empty(),
+            Tableau::empty()
+        ]
+    }
 }
 
 #[derive(Debug)]
@@ -154,7 +183,7 @@ impl GameState {
 
         let mut stock = Stack::random_deck();
 
-        let tableau = GameState::fill_tableau(&mut stock);
+        let tableaux = GameState::fill_tableaux(&mut stock);
 
         let mut talon = Stack::empty();
         talon.quad.pos = Vec2::new(-520, 350);
@@ -162,7 +191,8 @@ impl GameState {
         GameState {
             stock,
             talon,
-            tableau,
+            tableaux,
+            hand: Stack::empty(),
             foundations: GameState::create_foundations(),
             previous_time: instant::Instant::now(),
             mouse_pos: Vec2::zero(),
@@ -171,15 +201,13 @@ impl GameState {
         }
     }
 
-    pub fn fill_tableau(deck: &mut Stack) -> [Stack; 7] {
-        let mut tableau = [Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty(), Stack::empty()];
+    pub fn fill_tableaux(deck: &mut Stack) -> [Tableau; 7] {
+        let mut tableau = Tableau::empty_tableaux();
         for i in 0..7 {
-            let stack = Stack {
-                quad: Quad {
-                    pos: Vec2::new(-700.0 + ((CARD_SIZE.x + 20.0) * i as f32), 0.0),
-                    size: CARD_SIZE
-                },
-                cards: deck.cards.drain(0..(i + 1)).collect()
+            let stack = Tableau {
+                x_position: -700.0 + ((CARD_SIZE.x + 20.0) * i as f32),
+                cards: deck.cards.drain(0..(i + 1)).collect(),
+                shown_cards: 1
             };
             tableau[i] = stack;
         }
@@ -202,6 +230,7 @@ impl GameState {
         self.tick += elapsed_time;
 
         if self.tick > TICK_TIME {
+            self.hand.quad.pos = self.mouse_pos;
             self.tick -= TICK_TIME;
         }
     }
@@ -216,11 +245,8 @@ impl GameState {
         if self.talon.quad.contains(self.mouse_pos) {
             if self.stock.cards.len() == 0 {
                 self.stock.cards.splice(.., self.talon.cards.drain(..));
-            }
-        }
-        for stack in self.tableau.iter() {
-            if stack.quad.contains(self.mouse_pos) {
-                println!("{:?}", stack);
+            } else {
+                self.hand.cards.push(self.talon.cards.remove(0));
             }
         }
         for stack in self.foundations.iter() {

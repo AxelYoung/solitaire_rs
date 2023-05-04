@@ -1,6 +1,6 @@
 use wgpu::util::DeviceExt;
 
-use crate::systems::{Vec2, GameState, SCREEN_SIZE, Quad, Stack};
+use crate::systems::{Vec2, GameState, SCREEN_SIZE, Quad, Stack, CARD_SIZE};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -52,12 +52,38 @@ pub fn create_buffers(device: &wgpu::Device, state: &GameState) -> (Option<wgpu:
     create_quad(&state.stock.quad, if state.stock.cards.len() == 0 {[1,4]} else {[0,4]}, &mut verts, &mut indis);
     create_quad(&state.talon.quad, stack_index(&state.talon), &mut verts, &mut indis);
 
-    for stack in state.tableau.iter() {
-        create_quad(&stack.quad, stack_index(&stack), &mut verts, &mut indis);
+    for tableau in state.tableaux.iter() {
+        for (i, card) in tableau.cards.iter().enumerate() {
+            let quad = Quad {
+                pos: Vec2 {
+                    x: tableau.x_position,
+                    y: -(i as f32 * 70.0)
+                },
+                size: CARD_SIZE
+            };
+            create_quad(&quad,
+                if i >= tableau.cards.len() - tableau.shown_cards as usize { index_from_card(*card) } else { [0, 4]}, 
+                &mut verts, 
+                &mut indis);
+        }
     }
 
     for stack in state.foundations.iter() {
         create_quad(&stack.quad, stack_index(&stack), &mut verts, &mut indis);
+    }
+
+    for (i, card) in state.hand.cards.iter().enumerate() {
+        let quad = Quad {
+            pos: Vec2 {
+                x: state.hand.quad.pos.x,
+                y: state.hand.quad.pos.y -(i as f32 * 70.0)
+            },
+            size: CARD_SIZE
+        };
+        create_quad(&quad,
+            index_from_card(*card), 
+            &mut verts, 
+            &mut indis);
     }
 
     let vertex_buffer = device.create_buffer_init(
