@@ -53,11 +53,18 @@ pub fn create_buffers(device: &wgpu::Device, state: &GameState) -> (Option<wgpu:
     create_quad(&state.talon.quad, stack_index(&state.talon), &mut verts, &mut indis);
 
     for tableau in state.tableaux.iter() {
-        for (i, card) in tableau.cards.iter().enumerate() {
-            create_quad(&tableau.card_quads[i],
-                if i >= tableau.cards.len() - tableau.shown_cards as usize { index_from_card(card) } else { [0, 4]}, 
+        if tableau.cards.len() == 0 {
+            create_quad(&tableau.card_quads[0],
+                [1, 4], 
                 &mut verts, 
                 &mut indis);
+        } else {
+            for (i, card) in tableau.cards.iter().enumerate() {
+                create_quad(&tableau.card_quads[i],
+                    if i >= tableau.cards.len() - tableau.shown_cards as usize { index_from_card(card) } else { [0, 4]}, 
+                    &mut verts, 
+                    &mut indis);
+            }
         }
     }
 

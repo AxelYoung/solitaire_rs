@@ -3,7 +3,7 @@ use std::{ops::{Mul, AddAssign}, vec};
 use rand::Rng;
 use winit::event::*;
 
-pub const SCREEN_SIZE: Vec2i = Vec2i {x: 800, y:500};
+pub const SCREEN_SIZE: Vec2i = Vec2i {x: 1200, y:900};
 
 pub const CARD_SIZE: Vec2 = Vec2 { x: 160.0, y: 240.0 };
 
@@ -27,6 +27,7 @@ pub struct GameState {
     tick: f32
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Tableau {
     pub cards: Vec<Card>,
     pub card_quads: Vec<Quad>,
@@ -34,7 +35,7 @@ pub struct Tableau {
     pub x_position: f32
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Card {
     pub value: u8,
     pub rank: u8,
@@ -113,18 +114,27 @@ impl Tableau {
 
     pub fn calculate_card_quads(&mut self) {
         self.card_quads = vec![];
-        for i in 0..=self.cards.len() {
+        if self.cards.len() == 0 {
             self.card_quads.push( 
                 Quad {
-                    pos: Vec2 { x: self.x_position, y: -(i as f32 * 70.0) },
+                    pos: Vec2 { x: self.x_position, y: 0.0 },
                     size: CARD_SIZE
                 }
             );
+        } else {
+            for i in 0..self.cards.len() {
+                self.card_quads.push( 
+                    Quad {
+                        pos: Vec2 { x: self.x_position, y: -(i as f32 * 70.0) },
+                        size: CARD_SIZE
+                    }
+                );
+            }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Quad {
     pub pos: Vec2,
     pub size: Vec2
@@ -218,7 +228,7 @@ impl AddAssign for Vec2 {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vec2 {
     pub x: f32,
     pub y: f32
@@ -326,36 +336,74 @@ impl GameState {
             }
             for (t, tableau) in self.tableaux.iter_mut().enumerate() {
                 // Reverse is important, checks collision front to back
-                for i in (0..tableau.cards.len()).rev() {
-                    if i >= tableau.cards.len() - tableau.shown_cards as usize {
-                        // for each shown card in each tableau
-                        if tableau.card_quads[i].contains(self.mouse_pos) {
-                            tableau.shown_cards -= (tableau.cards.len() - i) as u8;
-                            self.hand.cards.splice(.., tableau.cards.drain(i..tableau.cards.len()));
-                            println!("{:?}", self.hand.cards[0]);
-                            tableau.calculate_card_quads();
-                            self.hand_origin = 5 + t as u8;
-                            return;
+                for i in (0..tableau.card_quads.len()).rev() {
+                    if tableau.cards.len() > 0 {
+                        if i >= tableau.cards.len() - tableau.shown_cards as usize {
+                            // for each shown card in each tableau
+                            if tableau.card_quads[i].contains(self.mouse_pos) {
+                                tableau.shown_cards -= (tableau.cards.len() - i) as u8;
+                                self.hand.cards.splice(.., tableau.cards.drain(i..tableau.cards.len()));
+                                tableau.calculate_card_quads();
+                                println!("{:?}", tableau);
+                                self.hand_origin = 5 + t as u8;
+                                return;
+                            }
                         }
+                    }
+
+                }
+            }
+            for (f, foundation) in self.foundations.iter_mut().enumerate() {
+                if foundation.cards.len() > 0 {
+                    if foundation.quad.contains(self.mouse_pos) {
+                        self.hand.cards.push(foundation.cards.remove(0));
+                        self.hand_origin = 1 + f as u8;
                     }
                 }
             }
         } else {
-            for tableau in self.tableaux.iter_mut() {
+            for (t, tableau) in self.tableaux.iter_mut().enumerate() {
                 if tableau.card_quads[tableau.card_quads.len() - 1].contains(self.mouse_pos) {
                     if tableau.cards.len() == 0 || 
                         GameState::can_place_on_tableau(&tableau.cards[tableau.cards.len() - 1], &self.hand.cards[0]) {
                             tableau.shown_cards += self.hand.cards.len() as u8;
                             tableau.cards.append(&mut self.hand.cards);
                             tableau.calculate_card_quads();
+                            println!("{:?}", tableau);
                             match self.hand_origin {
-                                0 => {},
-                                1..=4 => {},
                                 5.. => {
-                                    self.tableaux[(self.hand_origin - 5) as usize].shown_cards += 1;
-                                }
+                                    let origin = self.hand_origin - 5;
+                                    if t as u8 != origin {
+                                        if self.tableaux[origin as usize].cards.len() > 0 {
+                                            if self.tableaux[origin as usize].shown_cards == 0 {
+                                                self.tableaux[origin as usize].shown_cards += 1;
+                                            }
+                                        } 
+                                    }
+                                },
+                                _ => {}
                             }
                         return;
+                    }
+                }
+            }
+            for foundation in self.foundations.iter_mut() {
+                if foundation.quad.contains(self.mouse_pos) {
+                    if self.hand.cards.len() == 1 {
+                        if GameState::can_place_on_foundation(&foundation, &self.hand.cards[0]) {
+                                foundation.cards.insert(0, self.hand.cards.remove(0));
+                                match self.hand_origin {
+                                    5.. => {
+                                        let origin = self.hand_origin - 5;
+                                        if self.tableaux[origin as usize].cards.len() > 0 {
+                                            if self.tableaux[origin as usize].shown_cards == 0 {
+                                                self.tableaux[origin as usize].shown_cards += 1;
+                                            }
+                                        } 
+                                    },
+                                    _ => {}
+                                }
+                            }
                     }
                 }
             }
@@ -380,6 +428,17 @@ impl GameState {
 
     fn can_place_on_tableau(tableau: &Card, hand: &Card) -> bool {
         tableau.color != hand.color && tableau.rank == hand.rank + 1
+    }
+
+    fn can_place_on_foundation(foundation: &Stack, hand: &Card) -> bool {
+        let foundation_size = foundation.cards.len();
+        if foundation_size == 0 {
+            if hand.rank == 0 { return true; }
+            else { return false; }
+        }
+        let foundation_card = &foundation.cards[0];
+        if foundation_card.suit == hand.suit && foundation_card.rank == hand.rank - 1 { return true }
+        false
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
