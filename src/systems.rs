@@ -24,7 +24,7 @@ pub struct GameState {
     hand_origin: u8,
     mouse_pos: Vec2,
     previous_time: instant::Instant,
-    tick: f32
+    tick: f32,
 }
 
 #[derive(Debug, PartialEq)]
@@ -320,7 +320,6 @@ impl GameState {
         if self.hand.cards.len() == 0 {
             if self.stock.quad.contains(self.mouse_pos) {
                 if self.stock.cards.len() > 0 {
-                    // If the stock has cards and hand is empty, transfer 1 card from stock to talon
                     self.talon.cards.insert(0, self.stock.cards.pop().unwrap());
                 } else {
                         self.stock.cards.splice(.., self.talon.cards.drain(..));
@@ -328,7 +327,6 @@ impl GameState {
             }
             if self.talon.quad.contains(self.mouse_pos) {
                 if self.talon.cards.len() > 0 {
-                    // If talon has cards and hand is empty, take card from talon
                     self.hand.cards.push(self.talon.cards.remove(0));
                     self.hand_origin = 0;
                 }
@@ -415,7 +413,9 @@ impl GameState {
                 0 => {
                     self.talon.cards.insert(0, self.hand.cards.remove(0));
                 },
-                1..=4 => {},
+                1..=4 => {
+                    self.foundations[(self.hand_origin - 1) as usize].cards.insert(0, self.hand.cards.remove(0));
+                },
                 5.. => {
                     self.tableaux[(self.hand_origin - 5) as usize].shown_cards += self.hand.cards.len() as u8;
                     self.tableaux[(self.hand_origin - 5) as usize].cards.append(&mut self.hand.cards);
@@ -450,9 +450,12 @@ impl GameState {
                 self.mouse_click();
                 return true;
             }
-            WindowEvent::MouseInput { 
-                state: ElementState::Pressed,
-                button: MouseButton::Right,
+            WindowEvent::KeyboardInput { 
+                input: KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Space),
+                    ..
+                },
                 ..
             } => {
                 self.return_card();
