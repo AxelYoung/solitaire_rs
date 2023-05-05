@@ -322,13 +322,12 @@ impl GameState {
                 if self.stock.cards.len() > 0 {
                     // If the stock has cards and hand is empty, transfer 1 card from stock to talon
                     self.talon.cards.insert(0, self.stock.cards.pop().unwrap());
+                } else {
+                        self.stock.cards.splice(.., self.talon.cards.drain(..));
                 }
             }
             if self.talon.quad.contains(self.mouse_pos) {
-                if self.stock.cards.len() == 0 {
-                    // If stock is empty and hand is empty, transfer all cards in talon to stock
-                    self.stock.cards.splice(.., self.talon.cards.drain(..));
-                } else if self.talon.cards.len() > 0 {
+                if self.talon.cards.len() > 0 {
                     // If talon has cards and hand is empty, take card from talon
                     self.hand.cards.push(self.talon.cards.remove(0));
                     self.hand_origin = 0;
