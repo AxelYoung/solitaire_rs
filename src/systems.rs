@@ -1,7 +1,17 @@
-use std::{ops::{Mul, AddAssign}, vec};
+use std::{ops::{Mul, AddAssign}, vec, fs::File};
+use std::io::Cursor;
+use std::io::Read;
 
 use rand::Rng;
 use winit::event::*;
+
+use kira::{
+    manager::{
+        AudioManager, AudioManagerSettings,
+        backend::cpal::CpalBackend,
+    },
+    sound::static_sound::{StaticSoundData, StaticSoundSettings},
+};
 
 pub const SCREEN_SIZE: Vec2i = Vec2i {x: 1200, y:900};
 
@@ -24,7 +34,7 @@ pub struct GameState {
     hand_origin: u8,
     mouse_pos: Vec2,
     previous_time: instant::Instant,
-    tick: f32,
+    tick: f32
 }
 
 #[derive(Debug, PartialEq)]
@@ -275,7 +285,7 @@ impl GameState {
             previous_time: instant::Instant::now(),
             mouse_pos: Vec2::zero(),
             hand_origin: 0,
-            tick: 0.0,
+            tick: 0.0
         }
     }
 
@@ -322,13 +332,16 @@ impl GameState {
                 if self.stock.cards.len() > 0 {
                     self.talon.cards.insert(0, self.stock.cards.pop().unwrap());
                 } else {
-                        self.stock.cards.splice(.., self.talon.cards.drain(..));
+                    self.stock.cards.splice(.., self.talon.cards.drain(..));
                 }
+                GameState::play_audio(1);
             }
             if self.talon.quad.contains(self.mouse_pos) {
                 if self.talon.cards.len() > 0 {
                     self.hand.cards.push(self.talon.cards.remove(0));
                     self.hand_origin = 0;
+                    GameState::play_audio(0);
+                    return;
                 }
             }
             for (t, tableau) in self.tableaux.iter_mut().enumerate() {
@@ -343,6 +356,7 @@ impl GameState {
                                 tableau.calculate_card_quads();
                                 println!("{:?}", tableau);
                                 self.hand_origin = 5 + t as u8;
+                                GameState::play_audio(0);
                                 return;
                             }
                         }
@@ -355,6 +369,8 @@ impl GameState {
                     if foundation.quad.contains(self.mouse_pos) {
                         self.hand.cards.push(foundation.cards.remove(0));
                         self.hand_origin = 1 + f as u8;
+                        GameState::play_audio(0);
+                        return;
                     }
                 }
             }
@@ -380,6 +396,7 @@ impl GameState {
                                 },
                                 _ => {}
                             }
+                        GameState::play_audio(1);
                         return;
                     }
                 }
@@ -400,6 +417,8 @@ impl GameState {
                                     },
                                     _ => {}
                                 }
+                                GameState::play_audio(1);
+                                return;
                             }
                     }
                 }
@@ -422,6 +441,7 @@ impl GameState {
                     self.tableaux[(self.hand_origin - 5) as usize].calculate_card_quads();
                 }
             }
+            GameState::play_audio(1);
         }
     }
 
@@ -438,6 +458,18 @@ impl GameState {
         let foundation_card = &foundation.cards[0];
         if foundation_card.suit == hand.suit && foundation_card.rank == hand.rank - 1 { return true }
         false
+    }
+
+    fn play_audio(id: u8) {
+        let mut audio_manager = AudioManager::<CpalBackend>::new(AudioManagerSettings::default()).unwrap();
+        let audio;
+        match id {
+            0 => { audio = include_bytes!("aud/place_card.ogg").to_vec(); }
+            _ => { audio = include_bytes!("aud/pick_up_card.ogg").to_vec();}
+        }
+        let cursor = Cursor::new(audio);
+        let sound_data = StaticSoundData::from_cursor(cursor, StaticSoundSettings::default()).unwrap();
+        audio_manager.play(sound_data.clone()).unwrap();
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
