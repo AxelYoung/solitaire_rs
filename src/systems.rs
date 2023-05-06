@@ -1,17 +1,11 @@
-use std::{ops::{Mul, AddAssign}, vec, fs::File};
+use std::{ops::{Mul, AddAssign}, vec, thread};
 use std::io::Cursor;
-use std::io::Read;
-
+use std::fs::File;
+use std::io::BufReader;
+use rodio::{Decoder, OutputStream, Sink, OutputStreamHandle, source::Buffered};
+use instant::Duration;
 use rand::Rng;
 use winit::event::*;
-
-use kira::{
-    manager::{
-        AudioManager, AudioManagerSettings,
-        backend::cpal::CpalBackend,
-    },
-    sound::static_sound::{StaticSoundData, StaticSoundSettings},
-};
 
 pub const SCREEN_SIZE: Vec2i = Vec2i {x: 1200, y:900};
 
@@ -34,7 +28,8 @@ pub struct GameState {
     hand_origin: u8,
     mouse_pos: Vec2,
     previous_time: instant::Instant,
-    tick: f32
+    tick: f32,
+    stream_handle: OutputStreamHandle
 }
 
 #[derive(Debug, PartialEq)]
@@ -267,7 +262,7 @@ impl Vec2 {
 }
 
 impl GameState {
-    pub fn new() -> Self {
+    pub fn new(stream_handle: OutputStreamHandle) -> Self {
 
         let mut stock = Stack::random_deck();
 
@@ -285,7 +280,8 @@ impl GameState {
             previous_time: instant::Instant::now(),
             mouse_pos: Vec2::zero(),
             hand_origin: 0,
-            tick: 0.0
+            tick: 0.0,
+            stream_handle
         }
     }
 
@@ -334,13 +330,13 @@ impl GameState {
                 } else {
                     self.stock.cards.splice(.., self.talon.cards.drain(..));
                 }
-                GameState::play_audio(1);
+                self.play_audio(1);
             }
             if self.talon.quad.contains(self.mouse_pos) {
                 if self.talon.cards.len() > 0 {
                     self.hand.cards.push(self.talon.cards.remove(0));
                     self.hand_origin = 0;
-                    GameState::play_audio(0);
+                    self.play_audio(0);
                     return;
                 }
             }
@@ -354,9 +350,8 @@ impl GameState {
                                 tableau.shown_cards -= (tableau.cards.len() - i) as u8;
                                 self.hand.cards.splice(.., tableau.cards.drain(i..tableau.cards.len()));
                                 tableau.calculate_card_quads();
-                                println!("{:?}", tableau);
                                 self.hand_origin = 5 + t as u8;
-                                GameState::play_audio(0);
+                                self.play_audio(0);
                                 return;
                             }
                         }
@@ -369,7 +364,7 @@ impl GameState {
                     if foundation.quad.contains(self.mouse_pos) {
                         self.hand.cards.push(foundation.cards.remove(0));
                         self.hand_origin = 1 + f as u8;
-                        GameState::play_audio(0);
+                        self.play_audio(0);
                         return;
                     }
                 }
@@ -382,7 +377,6 @@ impl GameState {
                             tableau.shown_cards += self.hand.cards.len() as u8;
                             tableau.cards.append(&mut self.hand.cards);
                             tableau.calculate_card_quads();
-                            println!("{:?}", tableau);
                             match self.hand_origin {
                                 5.. => {
                                     let origin = self.hand_origin - 5;
@@ -396,7 +390,7 @@ impl GameState {
                                 },
                                 _ => {}
                             }
-                        GameState::play_audio(1);
+                        self.play_audio(1);
                         return;
                     }
                 }
@@ -417,7 +411,7 @@ impl GameState {
                                     },
                                     _ => {}
                                 }
-                                GameState::play_audio(1);
+                                self.play_audio(1);
                                 return;
                             }
                     }
@@ -441,7 +435,7 @@ impl GameState {
                     self.tableaux[(self.hand_origin - 5) as usize].calculate_card_quads();
                 }
             }
-            GameState::play_audio(1);
+            self.play_audio(1);
         }
     }
 
@@ -460,16 +454,20 @@ impl GameState {
         false
     }
 
-    fn play_audio(id: u8) {
-        let mut audio_manager = AudioManager::<CpalBackend>::new(AudioManagerSettings::default()).unwrap();
+    fn play_audio(&self, id: u8) {
+        let sink = Sink::try_new(&self.stream_handle).unwrap();
+       
         let audio;
+
         match id {
-            0 => { audio = include_bytes!("aud/place_card.ogg").to_vec(); }
-            _ => { audio = include_bytes!("aud/pick_up_card.ogg").to_vec();}
+            0 => { audio = include_bytes!("aud/pick_up_card.ogg").to_vec() },
+            _ => { audio = include_bytes!("aud/place_card.ogg").to_vec() }
         }
-        let cursor = Cursor::new(audio);
-        let sound_data = StaticSoundData::from_cursor(cursor, StaticSoundSettings::default()).unwrap();
-        audio_manager.play(sound_data.clone()).unwrap();
+        
+        let source = Decoder::new(Cursor::new(audio)).unwrap();
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
@@ -482,12 +480,9 @@ impl GameState {
                 self.mouse_click();
                 return true;
             }
-            WindowEvent::KeyboardInput { 
-                input: KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(VirtualKeyCode::Space),
-                    ..
-                },
+            WindowEvent::MouseInput { 
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
                 ..
             } => {
                 self.return_card();

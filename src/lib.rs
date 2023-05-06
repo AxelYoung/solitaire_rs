@@ -4,6 +4,8 @@ use winit::{
     window::WindowBuilder, dpi::PhysicalSize,
 };
 
+use rodio::OutputStream;
+
 #[cfg(target_arch="wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -54,7 +56,10 @@ pub fn run() {
 
     let mut render_state = pollster::block_on(render::new(window));
 
-    let mut game_state = GameState::new();
+    let (stream, stream_handle) = OutputStream::try_default().unwrap();
+    std::mem::forget(stream);
+
+    let mut game_state = GameState::new(stream_handle);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::RedrawRequested(window_id) if window_id == render_state.window().id() => {
